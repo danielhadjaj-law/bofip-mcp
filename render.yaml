@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: bofip-mcp
+    runtime: python
+    plan: free
+    region: frankfurt
+    pythonVersion: "3.12"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: BOFIP_MCP_TICKETS_DIR
+        value: /tmp/bofip-mcp-tickets
+    healthCheckPath: /

@@ -1,0 +1,31 @@
+MIT License
+
+Copyright (c) 2026 [VOTRE NOM]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Les données BOFiP-Impôts exposées par ce serveur sont publiées par la
+Direction Générale des Finances Publiques (DGFiP) sous la Licence Ouverte
+v2.0 (Etalab). Voir : https://www.etalab.gouv.fr/licence-ouverte-open-licence
+
+Le serveur n'est pas affilié à, ni endossé par, la DGFiP ou le Ministère de
+l'Économie. Il s'agit d'un outil indépendant qui interroge l'API publique
+data.economie.gouv.fr et restitue les données telles que publiées.
