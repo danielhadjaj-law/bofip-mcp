@@ -24,23 +24,49 @@ class BofipAPIError(Exception):
     pass
 
 
+# Nouvelles tentatives sur erreurs réseau transitoires (délai dépassé,
+# connexion refusée ou coupée), fréquentes juste après le réveil du serveur.
+MAX_ATTEMPTS = 3
+RETRY_DELAYS = (1.0, 3.0)
+
+
+def _describe(e: Exception) -> str:
+    """Décrit une exception même quand son message est vide (ex. ReadTimeout)."""
+    msg = str(e).strip()
+    return f"{type(e).__name__} – {msg}" if msg else type(e).__name__
+
+
 async def _request(path: str, params: dict[str, Any] | None = None) -> dict:
     """Effectue un appel HTTP GET à l'API ODS avec gestion d'erreurs."""
     url = f"{ODS_BASE}/{path}"
+    last_error: Exception | None = None
     async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-        try:
-            response = await client.get(url, params=params)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            raise BofipAPIError(
-                f"Erreur API BOFiP ({e.response.status_code}) : "
-                f"{e.response.text[:300]}"
-            )
-        except httpx.RequestError as e:
-            raise BofipAPIError(f"Erreur réseau : {e}")
-        except Exception as e:
-            raise BofipAPIError(f"Erreur inattendue : {e}")
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                # Erreurs serveur transitoires : on réessaie ; erreurs 4xx : non.
+                if e.response.status_code in (502, 503, 504) and attempt < MAX_ATTEMPTS - 1:
+                    last_error = e
+                    await asyncio.sleep(RETRY_DELAYS[attempt])
+                    continue
+                raise BofipAPIError(
+                    f"Erreur API BOFiP ({e.response.status_code}) : "
+                    f"{e.response.text[:300]}"
+                )
+            except httpx.RequestError as e:
+                last_error = e
+                if attempt < MAX_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_DELAYS[attempt])
+                    continue
+                raise BofipAPIError(
+                    f"Erreur réseau après {MAX_ATTEMPTS} tentatives : {_describe(e)}"
+                )
+            except Exception as e:
+                raise BofipAPIError(f"Erreur inattendue : {_describe(e)}")
+    raise BofipAPIError(f"Erreur réseau : {_describe(last_error)}")
 
 
 async def search_vigueur(

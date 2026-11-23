@@ -46,6 +46,29 @@ mcp = FastMCP(
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# Ordre des résultats
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def _order_by(tri: str, has_text_query: bool) -> Optional[str]:
+    """
+    Ordre des résultats pour l'API ODS.
+
+    Sans paramètre order_by, l'API classe les résultats d'une recherche
+    plein texte par pertinence. Le tri par date n'est appliqué que sur
+    demande, ou en l'absence de termes de recherche (pertinence sans objet).
+    """
+    tri = (tri or "pertinence").strip().lower()
+    if tri not in ("pertinence", "date"):
+        raise ValueError(
+            f"'tri' doit valoir \"pertinence\" ou \"date\" (reçu : {tri})."
+        )
+    if tri == "date" or not has_text_query:
+        return "debut_de_validite DESC"
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # OUTIL 1 — Recherche plein texte basique
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -54,6 +77,7 @@ async def rechercher_bofip(
     query: str,
     page: int = 1,
     page_size: int = 10,
+    tri: str = "pertinence",
 ) -> str:
     """
     Recherche plein texte dans le BOFiP en vigueur.
@@ -64,6 +88,7 @@ async def rechercher_bofip(
             "régime mère-fille", "provision pour créances douteuses".
         page: Numéro de page (défaut 1, ≥1).
         page_size: Nombre de résultats par page (défaut 10, max 100).
+        tri: Ordre des résultats : "pertinence" (défaut) ou "date".
 
     Returns:
         Liste paginée de BOI correspondants, avec identifiant juridique,
@@ -77,6 +102,10 @@ async def rechercher_bofip(
     if page < 1:
         return "❌ Erreur : 'page' doit être ≥ 1."
     page_size = max(1, min(page_size, 100))
+    try:
+        order_by = _order_by(tri, True)
+    except ValueError as e:
+        return f"❌ Erreur : {e}"
 
     try:
         response = await search_vigueur(
@@ -84,7 +113,7 @@ async def rechercher_bofip(
             select="identifiant_juridique,titre,serie,division,type,debut_de_validite,permalien,contenu",
             limit=page_size,
             offset=(page - 1) * page_size,
-            order_by="debut_de_validite DESC",
+            order_by=order_by,
         )
         return format_search_results(
             response, page, page_size, "rechercher_bofip", include_extrait=True
@@ -107,6 +136,7 @@ async def rechercher_avancee_bofip(
     date_max: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
+    tri: str = "pertinence",
 ) -> str:
     """
     Recherche multi-critères dans le BOFiP en vigueur.
@@ -119,11 +149,14 @@ async def rechercher_avancee_bofip(
         serie: Série BOFiP (ex: "CF", "IR", "IS", "TVA", "CTX", "ENR", "RPPM",
             "BIC", "BNC", "BA", "IF", "RES", "TPS", "DJC", "INT", "REC", "SJ").
         division: Division au sein de la série (ex: "IOR", "PGR", "INF", "DECLA").
-        type_document: Type de document ("Contenu", "Actualité", "Rescrit"...).
+        type_document: Type de document : "Contenu" ou "Actualité" (seules
+            valeurs du jeu de données). Pour les rescrits, utiliser serie="RES" ;
+            pour les formulaires, serie="FORM".
         date_min: Date de début de validité minimale (format YYYY-MM-DD).
         date_max: Date de début de validité maximale (format YYYY-MM-DD).
         page: Numéro de page (défaut 1).
         page_size: Nombre de résultats par page (défaut 10, max 100).
+        tri: Ordre des résultats : "pertinence" (défaut) ou "date".
 
     Returns:
         Liste paginée des BOI correspondant à tous les critères.
@@ -136,6 +169,10 @@ async def rechercher_avancee_bofip(
     if page < 1:
         return "❌ Erreur : 'page' doit être ≥ 1."
     page_size = max(1, min(page_size, 100))
+    try:
+        order_by = _order_by(tri, bool(query))
+    except ValueError as e:
+        return f"❌ Erreur : {e}"
 
     clauses = []
     refine = []
@@ -176,7 +213,7 @@ async def rechercher_avancee_bofip(
             select="identifiant_juridique,titre,serie,division,type,debut_de_validite,permalien,contenu",
             limit=page_size,
             offset=(page - 1) * page_size,
-            order_by="debut_de_validite DESC",
+            order_by=order_by,
         )
         return format_search_results(
             response, page, page_size, "rechercher_avancee_bofip", include_extrait=True
@@ -194,6 +231,7 @@ async def rechercher_rescrits(
     query: Optional[str] = None,
     page: int = 1,
     page_size: int = 10,
+    tri: str = "pertinence",
 ) -> str:
     """
     Recherche dans les rescrits de portée générale publiés au BOFiP.
@@ -205,12 +243,13 @@ async def rechercher_rescrits(
 
     Args:
         query: Termes de recherche (optionnel). Sans query, retourne les
-            rescrits les plus récents.
+            rescrits les plus récents ; avec query, les plus pertinents.
         page: Numéro de page (défaut 1).
         page_size: Nombre de résultats par page (défaut 10, max 100).
+        tri: Ordre des résultats : "pertinence" (défaut) ou "date".
 
     Returns:
-        Liste paginée des rescrits correspondants, du plus récent au plus ancien.
+        Liste paginée des rescrits correspondants.
 
     Note:
         Le filtrage est effectué sur le champ "titre" qui mentionne "Rescrit"
@@ -220,6 +259,10 @@ async def rechercher_rescrits(
     if page < 1:
         return "❌ Erreur : 'page' doit être ≥ 1."
     page_size = max(1, min(page_size, 100))
+    try:
+        order_by = _order_by(tri, bool(query))
+    except ValueError as e:
+        return f"❌ Erreur : {e}"
 
     # Les rescrits BOFiP ont "RES -" ou "Rescrit" dans le titre, ou la série "RES"
     # On combine plusieurs critères pour maximiser le rappel
@@ -237,7 +280,7 @@ async def rechercher_rescrits(
             select="identifiant_juridique,titre,serie,division,type,debut_de_validite,permalien,contenu",
             limit=page_size,
             offset=(page - 1) * page_size,
-            order_by="debut_de_validite DESC",
+            order_by=order_by,
         )
         return format_search_results(
             response, page, page_size, "rechercher_rescrits", include_extrait=True
@@ -256,6 +299,7 @@ async def rechercher_par_article_cgi(
     code: str = "CGI",
     page: int = 1,
     page_size: int = 10,
+    tri: str = "pertinence",
 ) -> str:
     """
     Recherche les BOI commentant un article précis du CGI, du LPF ou du CDD.
@@ -271,6 +315,7 @@ async def rechercher_par_article_cgi(
             "CDD" (Code des douanes).
         page: Numéro de page (défaut 1).
         page_size: Nombre de résultats (défaut 10, max 100).
+        tri: Ordre des résultats : "pertinence" (défaut) ou "date".
 
     Returns:
         Liste paginée des BOI mentionnant cet article.
@@ -283,6 +328,10 @@ async def rechercher_par_article_cgi(
     if page < 1:
         return "❌ Erreur : 'page' doit être ≥ 1."
     page_size = max(1, min(page_size, 100))
+    try:
+        order_by = _order_by(tri, True)
+    except ValueError as e:
+        return f"❌ Erreur : {e}"
 
     code_upper = code.upper()
     if code_upper not in ("CGI", "LPF", "CDD"):
@@ -299,7 +348,7 @@ async def rechercher_par_article_cgi(
             select="identifiant_juridique,titre,serie,division,type,debut_de_validite,permalien,contenu",
             limit=page_size,
             offset=(page - 1) * page_size,
-            order_by="debut_de_validite DESC",
+            order_by=order_by,
         )
         return format_search_results(
             response, page, page_size, "rechercher_par_article_cgi", include_extrait=True
@@ -317,6 +366,7 @@ async def rechercher_par_jurisprudence(
     reference: str,
     page: int = 1,
     page_size: int = 10,
+    tri: str = "pertinence",
 ) -> str:
     """
     Recherche les BOI citant une décision de jurisprudence.
@@ -335,6 +385,7 @@ async def rechercher_par_jurisprudence(
             - Le numéro de pourvoi/requête seul fonctionne souvent.
         page: Numéro de page (défaut 1).
         page_size: Nombre de résultats (défaut 10, max 100).
+        tri: Ordre des résultats : "pertinence" (défaut) ou "date".
 
     Returns:
         Liste paginée des BOI citant cette décision.
@@ -347,6 +398,10 @@ async def rechercher_par_jurisprudence(
     if page < 1:
         return "❌ Erreur : 'page' doit être ≥ 1."
     page_size = max(1, min(page_size, 100))
+    try:
+        order_by = _order_by(tri, True)
+    except ValueError as e:
+        return f"❌ Erreur : {e}"
 
     try:
         response = await search_vigueur(
@@ -354,7 +409,7 @@ async def rechercher_par_jurisprudence(
             select="identifiant_juridique,titre,serie,division,type,debut_de_validite,permalien,contenu",
             limit=page_size,
             offset=(page - 1) * page_size,
-            order_by="debut_de_validite DESC",
+            order_by=order_by,
         )
         return format_search_results(
             response, page, page_size, "rechercher_par_jurisprudence", include_extrait=True
@@ -867,14 +922,10 @@ async def lister_types_documents() -> str:
     """
     Liste les types de documents présents dans le BOFiP en vigueur.
 
-    Le BOFiP contient plusieurs catégories de documents :
-    - Commentaires administratifs (le gros du corpus)
-    - Rescrits de portée générale
-    - Actualités doctrinales
-    - Barèmes
-    - Formulaires
-    - Lettres-types
-    - Etc.
+    Dans le jeu de données bofip-vigueur, le champ "type" ne prend que deux
+    valeurs : "Contenu" (commentaires administratifs) et "Actualité"
+    (actualités doctrinales). Les autres catégories se repèrent par la série :
+    rescrits de portée générale (serie="RES"), formulaires (serie="FORM").
 
     Cet outil retourne la liste des types présents dans l'open data avec
     leur volume, ce qui permet de cibler des recherches ultérieures via
